@@ -1,33 +1,57 @@
-# AgentLink Hermes Skills
+# AgentLink Skills
 
-A collection of skills for the [Hermes Agent](https://hermes-agent.nousresearch.com/). Each skill lives in its own directory under `skills/` and is defined by a `SKILL.md` file that Hermes loads at runtime.
+A collection of skills compatible with both [Claude Code](https://claude.ai/code)
+and [Hermes Agent](https://hermes-agent.nousresearch.com/). Each skill lives in
+its own directory under `skills/` and is defined by a `SKILL.md` file loaded at
+runtime.
 
 ## Installation
 
-1. Add tap: `hermes skills tap add lpezet/agentlink-hermes`, or using the skill `/skills tap add lpezet/agentlink-hermes`.
-1. Install skill: `hermes skills install lpezet/agentlink-hermes/[skill]`, or using the skill `/skills install lpezet/agentlink-hermes/[skill]`.
+### Claude Code
 
-For example, from command line:
+Add the marketplace and install the skill:
 
 ```bash
-hermes skills tap add lpezet/agentlink-hermes && hermes skills install lpezet/agentlink-hermes/botcha.ai
+/plugin marketplace add github:lpezet/agentlink-skills
+/plugin install botcha-ai@agentlink-skills
+```
+
+Or add it once to your project settings (`.claude/settings.json`):
+
+```json
+{
+  "extraKnownMarketplaces": ["github:lpezet/agentlink-skills"]
+}
+```
+
+Then install any skill with `/plugin install <skill-name>@agentlink-skills`.
+
+### Hermes Agent
+
+From the command line:
+
+```bash
+hermes skills tap add lpezet/agentlink-skills && hermes skills install lpezet/agentlink-skills/botcha-ai
 ```
 
 Or within Hermes:
 
 ```bash
-/skills tap add lpezet/agentlink-hermes
-/skills install lpezet/agentlink-hermes/botcha.ai
+/skills tap add lpezet/agentlink-skills
+/skills install lpezet/agentlink-skills/botcha-ai
 /reset
 ```
 
 ## Skills
 
-### [botcha.ai](skills/botcha.ai/SKILL.md)
+### [botcha-ai](skills/botcha-ai/SKILL.md)
 
-**Category:** auth | **Tags:** auth, botcha.ai | **Version:** 1.0.0
+**Category:** auth | **Tags:** auth, botcha.ai | **Version:** 2.0.0
 
-Obtains a [Botcha.ai](https://botcha.ai) JWT access token by solving proof-of-agent challenges. Handles all four challenge types:
+Obtains a [Botcha.ai](https://botcha.ai) JWT access token for an AI agent.
+Manages the full identity lifecycle: first-run TAP registration (Ed25519 keypair
+generation), fast keypair challenge-response auth on subsequent runs, and
+challenge-solving fallback for unauthenticated contexts.
 
 | Challenge | Mechanism                  | Time limit |
 | --------- | -------------------------- | ---------- |
@@ -38,10 +62,10 @@ Obtains a [Botcha.ai](https://botcha.ai) JWT access token by solving proof-of-ag
 
 **Inputs:**
 
-| Parameter       | Required | Description                                           |
-| --------------- | -------- | ----------------------------------------------------- |
-| `app_id`        | yes      | Your Botcha.ai application ID                         |
-| `audience`      | no       | Resource server URL — scopes the token                |
-| `refresh_token` | no       | Existing refresh token — skips the challenge entirely |
+| Parameter  | Required | Description                                    |
+| ---------- | -------- | ---------------------------------------------- |
+| `app_id`   | yes      | Your Botcha.ai application ID                  |
+| `audience` | no       | Resource server URL — scopes the token         |
 
-**Output:** JSON block with `access_token`, `refresh_token`, `challenge_type`, and `strategy_notes`.
+**Output:** JSON block with `access_token`, `refresh_token`, `auth_method`,
+`agent_id` (on first registration), and `strategy_notes`.

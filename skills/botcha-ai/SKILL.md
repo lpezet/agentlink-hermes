@@ -16,6 +16,8 @@ description: |
 
   Returns a JSON block with access_token, refresh_token, agent_id (when newly
   registered for the app), auth_method, and strategy_notes (on failure).
+allowed-tools: Bash(python3 *), Bash(curl *)
+arguments: [app_id, audience]
 metadata:
   version: 2.0.0
   author: lpezet@gmail.com
@@ -27,16 +29,20 @@ metadata:
 Your sole job: obtain a valid `access_token` and return it as a JSON block.
 Follow these steps in order. Stop as soon as you have a token.
 
+Parameters: `$1` = app_id (required), `$2` = audience (optional).
+
 Config dir: `~/.config/botcha-ai/`  
 Agent identity: `~/.config/botcha-ai/agent.yaml`  
-App config: `~/.config/botcha-ai/config.yaml`
+App config: `~/.config/botcha-ai/config.yaml`  
+Scripts: `${CLAUDE_SKILL_DIR}/scripts/` — Hermes: replace with the path to
+this skill's `scripts/` directory.
 
 ## CRITICAL RULES
 
 1. **NEVER use curl for `/v1/token/verify`, `/v1/challenges/*/verify`, or any
    `/v1/agents/` POST.** Use the pre-built scripts for all of these. curl is
    allowed only for GET requests and `/v1/token/refresh`.
-2. **Every** HTTP call to `api.botcha.ai` must include `?app_id=APP_ID_HERE`
+2. **Every** HTTP call to `api.botcha.ai` must include `?app_id=<app_id>`
    in the URL.
 3. If you receive `APP_REGISTRATION_REQUIRED`, it means `app_id` was missing
    from that specific request — not that the app is unregistered. Retry with
@@ -48,7 +54,7 @@ App config: `~/.config/botcha-ai/config.yaml`
 ## Step 0: Bootstrap agent identity and app registration
 
 ```bash
-python3 scripts/botcha_setup.py APP_ID_HERE
+python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_setup.py $1
 ```
 
 **If the output contains `"missing": [...]`:** ask the user for each listed
@@ -57,7 +63,7 @@ default. When asking for `operator`, propose the user's name or organisation if
 you know it from context. Then re-run with the supplied values:
 
 ```bash
-python3 scripts/botcha_setup.py APP_ID_HERE --agent-name "NAME" --operator "ORG"
+python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_setup.py $1 --agent-name "NAME" --operator "ORG"
 ```
 
 **If `"success": true, "registered": true`** → a new TAP registration was
@@ -70,19 +76,18 @@ through to **Step 2** (challenge-solving fallback).
 
 **Note on `app_secret`:** After registering the *app* itself via `POST /v1/apps`
 on botcha.ai, the response includes an `app_secret` shown only once. Paste it
-into the `app_secret` field of the `APP_ID_HERE` section in `config.yaml`. It
-is the recovery anchor for keypair rotation and is not needed for normal
-operation.
+into the `app_secret` field of the `$1` section in `config.yaml`. It is the
+recovery anchor for keypair rotation and is not needed for normal operation.
 
 ---
 
 ## Fast path: refresh token
 
-Check `~/.config/botcha-ai/config.yaml`. If the `APP_ID_HERE` section contains
-a non-empty `refresh_token`:
+Check `~/.config/botcha-ai/config.yaml`. If the `$1` section contains a
+non-empty `refresh_token`:
 
 ```bash
-curl -s -X POST "https://api.botcha.ai/v1/token/refresh?app_id=APP_ID_HERE" \
+curl -s -X POST "https://api.botcha.ai/v1/token/refresh?app_id=$1" \
   -H "Content-Type: application/json" \
   -d '{"refresh_token": "REFRESH_TOKEN_HERE"}'
 ```
@@ -94,13 +99,13 @@ Parse `access_token`. Emit the output block (Step 4). Stop.
 ## Step 1: TAP challenge-response auth
 
 ```bash
-python3 scripts/botcha_tap_auth.py APP_ID_HERE
+python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_tap_auth.py $1
 ```
 
-Include `AUDIENCE_HERE` as a second argument if the caller provided one:
+Include `$2` as a second argument if the caller provided an audience:
 
 ```bash
-python3 scripts/botcha_tap_auth.py APP_ID_HERE AUDIENCE_HERE
+python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_tap_auth.py $1 $2
 ```
 
 **If `"success": true`** → go to **Step 4**. Done.  
@@ -113,10 +118,10 @@ python3 scripts/botcha_tap_auth.py APP_ID_HERE AUDIENCE_HERE
 Use this path only when there is no registered agent identity or TAP auth failed.
 
 ```bash
-python3 scripts/botcha_get_token.py APP_ID_HERE
+python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_get_token.py $1
 ```
 
-Include `AUDIENCE_HERE` as a second argument if the caller provided one.
+Include `$2` as a second argument if the caller provided an audience.
 
 **If `"success": true`** → go to **Step 4**.  
 **If `"needs_reasoning": true`** → go to **Step 3**.
@@ -143,7 +148,7 @@ If you see a category not listed, best-guess the answer and record the category
 name in `strategy_notes` so the instructions can be extended.
 
 ```bash
-python3 scripts/botcha_verify_reasoning.py APP_ID_HERE CHALLENGE_ID TYPE '{"q-id-1":"answer1"}'
+python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_verify_reasoning.py $1 CHALLENGE_ID TYPE '{"q-id-1":"answer1"}'
 ```
 
 For hybrid challenges:

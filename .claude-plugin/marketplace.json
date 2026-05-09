@@ -1,0 +1,12 @@
+{
+  "name": "agentlink-skills",
+  "owner": { "name": "LP" },
+  "plugins": [
+    {
+      "name": "botcha-ai",
+      "source": "./skills",
+      "strict": false,
+      "skills": "botcha-ai"
+    }
+  ]
+}
