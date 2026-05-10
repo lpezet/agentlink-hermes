@@ -22,6 +22,14 @@ ANSWERS = json.loads(sys.argv[4])
 AUDIENCE = sys.argv[5] if len(sys.argv) > 5 else None
 
 HOST = "api.botcha.ai"
+
+# Load registered agent_id so reasoning credit is attributed to this agent.
+try:
+    import pathlib, yaml as _yaml
+    _cfg = _yaml.safe_load((pathlib.Path.home() / ".config" / "botcha-ai" / "config.yml").read_text())
+    AGENT_ID = _cfg["apps"][APP_ID].get("agent_id")
+except Exception:
+    AGENT_ID = None
 ctx = ssl.create_default_context()
 conn = http.client.HTTPSConnection(HOST, context=ctx)
 
@@ -39,6 +47,8 @@ try:
         payload_dict = {"id": CHALLENGE_ID, "answers": ANSWERS}
         path = f"/v1/token/verify?app_id={APP_ID}"
 
+    if AGENT_ID:
+        payload_dict["agent_id"] = AGENT_ID
     if AUDIENCE:
         payload_dict["audience"] = AUDIENCE
 

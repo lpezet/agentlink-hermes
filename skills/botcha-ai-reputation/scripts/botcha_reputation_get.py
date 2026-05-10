@@ -4,6 +4,9 @@ Fetch the current reputation score and tier for the registered agent.
 Usage: python3 botcha_reputation_get.py <app_id>
 
 Reads agent_id from ~/.config/botcha-ai/config.yml.
+Auth is self-managed: cached token (tap or challenge) is reused if still valid;
+otherwise TAP challenge-response is attempted first, with puzzle-solving as fallback.
+The resulting token, its expiry, and type are written back to config.yml.
 
 Output JSON fields:
   success    bool
@@ -111,7 +114,7 @@ def speed_challenge_auth():
     c = http.client.HTTPSConnection(HOST, context=ctx)
     c.request(
         "POST", f"/v1/token/verify?app_id={APP_ID}",
-        json.dumps({"id": cid, "answers": answers}).encode(),
+        json.dumps({"id": cid, "answers": answers, "agent_id": agent_id}).encode(),
         {"Content-Type": "application/json"},
     )
     token_resp = json.loads(c.getresponse().read().decode())

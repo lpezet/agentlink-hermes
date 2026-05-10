@@ -36,6 +36,15 @@ APP_ID = sys.argv[1]
 AUDIENCE = sys.argv[2] if len(sys.argv) > 2 else None
 HOST = "api.botcha.ai"
 
+# Load registered agent_id so puzzle credit is attributed to this agent.
+# Silently omitted if the agent isn't registered yet (first-run bootstrap).
+try:
+    import pathlib, yaml as _yaml
+    _cfg = _yaml.safe_load((pathlib.Path.home() / ".config" / "botcha-ai" / "config.yml").read_text())
+    AGENT_ID = _cfg["apps"][APP_ID].get("agent_id")
+except Exception:
+    AGENT_ID = None
+
 DEBUG_LOG = "/tmp/botcha_debug.log"
 
 def dbg(msg):
@@ -75,6 +84,8 @@ try:
         answers = [hashlib.sha256(str(p["num"]).encode()).hexdigest()[:8] for p in problems]
 
         payload_dict = {"id": cid, "answers": answers}
+        if AGENT_ID:
+            payload_dict["agent_id"] = AGENT_ID
         if AUDIENCE:
             payload_dict["audience"] = AUDIENCE
         payload = json.dumps(payload_dict).encode()

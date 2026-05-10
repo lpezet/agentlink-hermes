@@ -39,6 +39,10 @@ Scripts: `${CLAUDE_SKILL_DIR}/scripts/`
 2. **Every** API call in the scripts already includes `?app_id=<app_id>` — do not add it manually.
 3. The `private_key_pem` in `agent.yml` is sensitive. Never log or emit it.
 4. If config files are missing, tell the user to run the **botcha-ai skill** first.
+5. **Do not obtain or pass tokens yourself.** Auth is fully self-managed: the scripts try TAP
+   challenge-response first, fall back to puzzle-solving, and cache the resulting token (with
+   its expiry and type — `tap` or `challenge`) in `~/.config/botcha-ai/config.yml`. The cached
+   token is reused automatically on subsequent calls until near expiry.
 
 ---
 
