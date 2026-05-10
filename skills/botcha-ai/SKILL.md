@@ -101,7 +101,11 @@ curl -s -X POST "https://api.botcha.ai/v1/token/refresh?app_id=$1" \
   -d '{"refresh_token": "REFRESH_TOKEN_HERE"}'
 ```
 
-Parse `access_token`. Emit the output block (Step 4). Stop.
+If the response contains `access_token` → emit the output block (Step 4). Stop.
+
+If the response contains an error (e.g. `INVALID_TOKEN`, `TOKEN_EXPIRED`, or any
+non-success result) → clear `refresh_token` in `config.yml` (set it to `""`) and
+fall through to **Step 1**. Do **not** stop or report failure here.
 
 ---
 
