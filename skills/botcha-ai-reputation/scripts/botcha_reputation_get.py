@@ -19,6 +19,8 @@ import json
 import pathlib
 import http.client
 import ssl
+import base64
+import hashlib
 
 try:
     import yaml
@@ -26,16 +28,27 @@ except ImportError:
     print(json.dumps({"success": False, "error": "pyyaml not installed. Run: pip install pyyaml"}))
     sys.exit(1)
 
+try:
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+except ImportError:
+    print(json.dumps({"success": False, "error": "cryptography not installed. Run: pip install cryptography"}))
+    sys.exit(1)
+
 if len(sys.argv) < 2:
     print(json.dumps({"success": False, "error": "Usage: botcha_reputation_get.py <app_id>"}))
     sys.exit(1)
 
-APP_ID   = sys.argv[1]
-CFG_FILE = pathlib.Path.home() / ".config" / "botcha-ai" / "config.yml"
+APP_ID     = sys.argv[1]
+CFG_DIR    = pathlib.Path.home() / ".config" / "botcha-ai"
+AGENT_FILE = CFG_DIR / "agent.yml"
+CFG_FILE   = CFG_DIR / "config.yml"
+HOST       = "api.botcha.ai"
 
 try:
-    cfg_data = yaml.safe_load(CFG_FILE.read_text())
-    agent_id = cfg_data["apps"][APP_ID]["agent_id"]
+    agent_data = yaml.safe_load(AGENT_FILE.read_text())
+    cfg_data   = yaml.safe_load(CFG_FILE.read_text())
+    agent_id   = cfg_data["apps"][APP_ID]["agent_id"]
+    priv       = load_pem_private_key(agent_data["private_key_pem"].encode(), password=None)
 except Exception as e:
     print(json.dumps({
         "success": False,
@@ -45,9 +58,63 @@ except Exception as e:
     sys.exit(1)
 
 ctx = ssl.create_default_context()
+
+def tap_auth():
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request(
+        "POST", f"/v1/agents/auth?app_id={APP_ID}",
+        json.dumps({"agent_id": agent_id, "app_id": APP_ID}).encode(),
+        {"Content-Type": "application/json"},
+    )
+    nonce_resp   = json.loads(c.getresponse().read().decode())
+    challenge_id = nonce_resp.get("challenge_id")
+    nonce        = nonce_resp.get("nonce")
+    c.close()
+    if not challenge_id or not nonce:
+        return None, nonce_resp
+    sig = base64.b64encode(priv.sign(nonce.encode())).decode()
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request(
+        "POST", f"/v1/agents/auth/verify?app_id={APP_ID}",
+        json.dumps({"challenge_id": challenge_id, "agent_id": agent_id, "signature": sig}).encode(),
+        {"Content-Type": "application/json"},
+    )
+    token_resp = json.loads(c.getresponse().read().decode())
+    c.close()
+    return token_resp.get("access_token"), token_resp
+
+def speed_challenge_auth():
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request("GET", f"/v1/token?app_id={APP_ID}")
+    challenge_resp = json.loads(c.getresponse().read().decode())
+    c.close()
+    if not challenge_resp.get("success"):
+        return None, challenge_resp
+    challenge = challenge_resp["challenge"]
+    cid       = challenge["id"]
+    problems  = challenge.get("problems", [])
+    answers   = [hashlib.sha256(str(p["num"]).encode()).hexdigest()[:8] for p in problems]
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request(
+        "POST", f"/v1/token/verify?app_id={APP_ID}",
+        json.dumps({"id": cid, "answers": answers}).encode(),
+        {"Content-Type": "application/json"},
+    )
+    token_resp = json.loads(c.getresponse().read().decode())
+    c.close()
+    return token_resp.get("access_token"), token_resp
+
 try:
-    c = http.client.HTTPSConnection("api.botcha.ai", context=ctx)
-    c.request("GET", f"/v1/reputation/{agent_id}?app_id={APP_ID}")
+    jwt, raw = tap_auth()
+    if not jwt:
+        jwt, raw = speed_challenge_auth()
+    if not jwt:
+        print(json.dumps({"success": False, "error": "auth_failed", "raw_response": raw}))
+        sys.exit(0)
+
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request("GET", f"/v1/reputation/{agent_id}?app_id={APP_ID}",
+              headers={"Authorization": f"Bearer {jwt}"})
     resp = json.loads(c.getresponse().read().decode())
     c.close()
 
