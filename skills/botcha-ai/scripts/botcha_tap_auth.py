@@ -3,9 +3,9 @@
 Authenticate a registered TAP agent via Ed25519 keypair challenge-response.
 Usage: python3 botcha_tap_auth.py <app_id> [audience]
 
-Reads identity from ~/.config/botcha-ai/agent.yaml and
-                   ~/.config/botcha-ai/config.yaml.
-Persists the returned refresh_token back into config.yaml.
+Reads identity from ~/.config/botcha-ai/agent.yml and
+                   ~/.config/botcha-ai/config.yml.
+Persists the returned refresh_token back into config.yml.
 
 Output JSON fields: same envelope as botcha_get_token.py
   success        bool
@@ -49,8 +49,8 @@ APP_ID   = sys.argv[1]
 AUDIENCE = sys.argv[2] if len(sys.argv) > 2 else None
 
 CFG_DIR    = pathlib.Path.home() / ".config" / "botcha-ai"
-AGENT_FILE = CFG_DIR / "agent.yaml"
-CFG_FILE   = CFG_DIR / "config.yaml"
+AGENT_FILE = CFG_DIR / "agent.yml"
+CFG_FILE   = CFG_DIR / "config.yml"
 
 try:
     agent_data = yaml.safe_load(AGENT_FILE.read_text())

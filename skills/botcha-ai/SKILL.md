@@ -7,8 +7,8 @@ description: |
   fallback (speed/reasoning/hybrid/compute) when no registered identity exists.
 
   Config lives in two files under ~/.config/botcha-ai/ (both chmod 600):
-    agent.yaml  — agent identity and Ed25519 keypair (shared across all apps)
-    config.yaml — per-app registrations, keyed by app_id
+    agent.yml  — agent identity and Ed25519 keypair (shared across all apps)
+    config.yml — per-app registrations, keyed by app_id
 
   Call with:
     app_id:   <Botcha.ai app ID>       [required]
@@ -32,8 +32,8 @@ Follow these steps in order. Stop as soon as you have a token.
 Parameters: `$1` = app_id (required), `$2` = audience (optional).
 
 Config dir: `~/.config/botcha-ai/`  
-Agent identity: `~/.config/botcha-ai/agent.yaml`  
-App config: `~/.config/botcha-ai/config.yaml`  
+Agent identity: `~/.config/botcha-ai/agent.yml`  
+App config: `~/.config/botcha-ai/config.yml`  
 Scripts: `${CLAUDE_SKILL_DIR}/scripts/` — Hermes: replace with the path to
 this skill's `scripts/` directory.
 
@@ -47,7 +47,7 @@ this skill's `scripts/` directory.
 3. If you receive `APP_REGISTRATION_REQUIRED`, it means `app_id` was missing
    from that specific request — not that the app is unregistered. Retry with
    `?app_id=` present.
-4. The `private_key_pem` in `agent.yaml` is sensitive. Never log or emit it.
+4. The `private_key_pem` in `agent.yml` is sensitive. Never log or emit it.
 
 ---
 
@@ -75,15 +75,24 @@ performed. Record `agent_id` and include it in the Step 4 output block.
 through to **Step 2** (challenge-solving fallback).
 
 **Note on `app_secret`:** After registering the _app_ itself via `POST /v1/apps`
-on botcha.ai, the response includes an `app_secret` shown only once. Paste it
-into the `app_secret` field of the `$1` section in `config.yaml`. It is the
-recovery anchor for keypair rotation and is not needed for normal operation.
+on botcha.ai, the response includes an `app_secret` shown only once. You **must**
+paste it into `~/.config/botcha-ai/config.yml` before the first run:
+
+```yaml
+apps:
+  <app_id>:
+    app_secret: "your-secret-here"
+```
+
+It is required once to authenticate the initial TAP agent registration (botcha.ai
+uses it to verify you own the app). After the keypair is registered, all future
+runs use TAP challenge-response and the `app_secret` is no longer consulted.
 
 ---
 
 ## Fast path: refresh token
 
-Check `~/.config/botcha-ai/config.yaml`. If the `$1` section contains a
+Check `~/.config/botcha-ai/config.yml`. If the `$1` section contains a
 non-empty `refresh_token`:
 
 ```bash

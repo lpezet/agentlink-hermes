@@ -4,8 +4,8 @@ Bootstrap Botcha.ai agent identity and per-app registration.
 Usage: python3 botcha_setup.py <app_id> [--agent-name NAME] [--operator ORG]
 
 Steps:
-  1. Load or create ~/.config/botcha-ai/agent.yaml (keypair + identity).
-  2. Load or create the app_id section in ~/.config/botcha-ai/config.yaml,
+  1. Load or create ~/.config/botcha-ai/agent.yml (keypair + identity).
+  2. Load or create the app_id section in ~/.config/botcha-ai/config.yml,
      registering the agent with Botcha.ai TAP if the section is absent.
 
 Output JSON fields:
@@ -46,10 +46,10 @@ parser.add_argument("--operator", dest="operator", default=None)
 args = parser.parse_args()
 
 CFG_DIR    = pathlib.Path.home() / ".config" / "botcha-ai"
-AGENT_FILE = CFG_DIR / "agent.yaml"
-CFG_FILE   = CFG_DIR / "config.yaml"
+AGENT_FILE = CFG_DIR / "agent.yml"
+CFG_FILE   = CFG_DIR / "config.yml"
 
-# ── Step 1: agent.yaml ────────────────────────────────────────────────────────
+# ── Step 1: agent.yml ────────────────────────────────────────────────────────
 
 agent_data = yaml.safe_load(AGENT_FILE.read_text()) if AGENT_FILE.exists() else {}
 if not agent_data:
@@ -84,17 +84,32 @@ CFG_DIR.mkdir(parents=True, exist_ok=True)
 AGENT_FILE.write_text(yaml.dump(agent_data, default_flow_style=False))
 os.chmod(AGENT_FILE, 0o600)
 
-# ── Step 2: config.yaml ───────────────────────────────────────────────────────
+# ── Step 2: config.yml ───────────────────────────────────────────────────────
 
 cfg_data = yaml.safe_load(CFG_FILE.read_text()) if CFG_FILE.exists() else {}
 if not cfg_data:
     cfg_data = {}
 cfg_data.setdefault("apps", {})
 
-agent_id   = cfg_data["apps"].get(args.app_id, {}).get("agent_id")
+app_cfg    = cfg_data["apps"].get(args.app_id, {})
+agent_id   = app_cfg.get("agent_id")
+app_secret = app_cfg.get("app_secret", "")
 registered = False
 
 if not agent_id:
+    if not app_secret:
+        print(json.dumps({
+            "success": False,
+            "error": "app_secret_required",
+            "hint": (
+                f"Add your app_secret to ~/.config/botcha-ai/config.yml under "
+                f"apps.{args.app_id}.app_secret — it was shown once when you "
+                "created the app on botcha.ai. It is only needed for this initial "
+                "TAP registration; subsequent runs use the keypair."
+            ),
+        }))
+        sys.exit(0)
+
     payload = json.dumps({
         "name":                agent_data["agent_name"],
         "operator":            agent_data["operator"],
@@ -108,8 +123,10 @@ if not agent_id:
 
     ctx = ssl.create_default_context()
     c   = http.client.HTTPSConnection("api.botcha.ai", context=ctx)
-    c.request("POST", f"/v1/agents/register/tap?app_id={args.app_id}", payload,
-              {"Content-Type": "application/json"})
+    c.request("POST", f"/v1/agents/register/tap?app_id={args.app_id}", payload, {
+        "Content-Type":  "application/json",
+        "Authorization": f"Bearer {app_secret}",
+    })
     resp     = json.loads(c.getresponse().read().decode())
     agent_id = resp.get("agent_id") or resp.get("id")
     c.close()
@@ -124,7 +141,7 @@ if not agent_id:
 
     cfg_data["apps"][args.app_id] = {
         "agent_id":      agent_id,
-        "app_secret":    "",
+        "app_secret":    app_secret,
         "refresh_token": "",
     }
     CFG_FILE.write_text(yaml.dump(cfg_data, default_flow_style=False))
