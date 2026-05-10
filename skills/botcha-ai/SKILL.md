@@ -74,19 +74,11 @@ performed. Record `agent_id` and include it in the Step 4 output block.
 **If `"success": false` with an `error`** → record in `strategy_notes`, fall
 through to **Step 2** (challenge-solving fallback).
 
-**Note on `app_secret`:** After registering the _app_ itself via `POST /v1/apps`
-on botcha.ai, the response includes an `app_secret` shown only once. You **must**
-paste it into `~/.config/botcha-ai/config.yml` before the first run:
-
-```yaml
-apps:
-  <app_id>:
-    app_secret: "your-secret-here"
-```
-
-It is required once to authenticate the initial TAP agent registration (botcha.ai
-uses it to verify you own the app). After the keypair is registered, all future
-runs use TAP challenge-response and the `app_secret` is no longer consulted.
+**Note on `app_secret`:** The `app_secret` shown when you create the app on
+botcha.ai is **not** used as a Bearer token for agent registration. The script
+authenticates registration by solving a speed challenge and using the resulting
+JWT as the Bearer. You may store `app_secret` in `config.yml` for your own
+records, but the script does not require it.
 
 ---
 

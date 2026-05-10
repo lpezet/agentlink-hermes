@@ -3,15 +3,23 @@
 Bootstrap Botcha.ai agent identity and per-app registration.
 Usage: python3 botcha_setup.py <app_id> [--agent-name NAME] [--operator ORG]
 
-Steps:
-  1. Load or create ~/.config/botcha-ai/agent.yml (keypair + identity).
-  2. Load or create the app_id section in ~/.config/botcha-ai/config.yml,
-     registering the agent with Botcha.ai TAP if the section is absent.
+Correct registration flow (verified 2026-05-10):
+  1. Load or create ~/.config/botcha-ai/agent.yml (Ed25519 keypair + identity).
+  2. If no agent_id in config.yml for this app:
+     a. Solve a speed challenge (GET /v1/token -> POST /v1/token/verify) to get a JWT.
+     b. POST /v1/agents/register with the JWT Bearer -> agent_id.
+     c. POST /v1/agents/register/tap with the JWT Bearer, agent_id, and raw 32-byte
+        Ed25519 public key in base64 (NOT PEM format).
+  3. Save agent_id to ~/.config/botcha-ai/config.yml.
+
+Note: app_secret is NOT used as a Bearer token. The Bearer for registration is the
+JWT from the challenge solve. app_secret is preserved in config.yml as a reference
+but is not consulted by this script.
 
 Output JSON fields:
   success     bool
   agent_id    str   — the agent's ID for this app
-  registered  bool  — true if a new TAP registration was performed this run
+  registered  bool  — true if a new registration was performed this run
   missing     list  — when agent_name/operator are needed; re-run with flags
   error       str   — on failure
   raw_response obj  — on registration failure
@@ -23,6 +31,8 @@ import pathlib
 import os
 import http.client
 import ssl
+import hashlib
+import base64
 
 try:
     import yaml
@@ -48,6 +58,7 @@ args = parser.parse_args()
 CFG_DIR    = pathlib.Path.home() / ".config" / "botcha-ai"
 AGENT_FILE = CFG_DIR / "agent.yml"
 CFG_FILE   = CFG_DIR / "config.yml"
+HOST       = "api.botcha.ai"
 
 # ── Step 1: agent.yml ────────────────────────────────────────────────────────
 
@@ -69,7 +80,6 @@ if missing:
     }))
     sys.exit(0)
 
-agent_data.setdefault("capabilities", ["token:obtain"])
 agent_data.setdefault("trust_level", "verified")
 
 if not agent_data.get("private_key_pem"):
@@ -97,45 +107,98 @@ app_secret = app_cfg.get("app_secret", "")
 registered = False
 
 if not agent_id:
-    if not app_secret:
+    ctx = ssl.create_default_context()
+
+    # 2a. Solve speed challenge on a single connection to get JWT
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request("GET", f"/v1/token?app_id={args.app_id}")
+    challenge_resp = json.loads(c.getresponse().read().decode())
+
+    if not challenge_resp.get("success"):
         print(json.dumps({
             "success": False,
-            "error": "app_secret_required",
-            "hint": (
-                f"Add your app_secret to ~/.config/botcha-ai/config.yml under "
-                f"apps.{args.app_id}.app_secret — it was shown once when you "
-                "created the app on botcha.ai. It is only needed for this initial "
-                "TAP registration; subsequent runs use the keypair."
-            ),
+            "error": "challenge_fetch_failed",
+            "raw_response": challenge_resp,
         }))
         sys.exit(0)
 
-    payload = json.dumps({
-        "name":                agent_data["agent_name"],
-        "operator":            agent_data["operator"],
-        "version":             "1.0.0",
-        "public_key":          agent_data["public_key_pem"],
-        "signature_algorithm": "ed25519",
-        "capabilities":        agent_data["capabilities"],
-        "trust_level":         agent_data["trust_level"],
-        "app_id":              args.app_id,
-    }).encode()
+    challenge = challenge_resp["challenge"]
+    cid       = challenge["id"]
+    problems  = challenge.get("problems", [])
+    answers   = [hashlib.sha256(str(p["num"]).encode()).hexdigest()[:8] for p in problems]
 
-    ctx = ssl.create_default_context()
-    c   = http.client.HTTPSConnection("api.botcha.ai", context=ctx)
-    c.request("POST", f"/v1/agents/register/tap?app_id={args.app_id}", payload, {
-        "Content-Type":  "application/json",
-        "Authorization": f"Bearer {app_secret}",
-    })
-    resp     = json.loads(c.getresponse().read().decode())
-    agent_id = resp.get("agent_id") or resp.get("id")
+    verify_payload = json.dumps({"id": cid, "answers": answers}).encode()
+    c.request(
+        "POST", f"/v1/token/verify?app_id={args.app_id}",
+        body=verify_payload,
+        headers={"Content-Type": "application/json"},
+    )
+    token_resp = json.loads(c.getresponse().read().decode())
     c.close()
 
+    jwt = token_resp.get("access_token")
+    if not jwt:
+        print(json.dumps({
+            "success": False,
+            "error": "challenge_solve_failed",
+            "raw_response": token_resp,
+        }))
+        sys.exit(0)
+
+    # 2b. Register agent identity -> agent_id
+    reg_payload = json.dumps({
+        "name":     agent_data["agent_name"],
+        "operator": agent_data["operator"],
+        "version":  "1.0.0",
+        "app_id":   args.app_id,
+    }).encode()
+
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request(
+        "POST", f"/v1/agents/register?app_id={args.app_id}",
+        body=reg_payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {jwt}"},
+    )
+    reg_resp = json.loads(c.getresponse().read().decode())
+    c.close()
+
+    agent_id = reg_resp.get("agent_id") or reg_resp.get("id")
     if not agent_id:
         print(json.dumps({
             "success": False,
-            "error": "registration_failed",
-            "raw_response": resp,
+            "error": "agent_registration_failed",
+            "raw_response": reg_resp,
+        }))
+        sys.exit(0)
+
+    # 2c. Register TAP keypair — raw 32-byte Ed25519 pubkey in base64 (NOT PEM)
+    pub_key       = agent_data["public_key_pem"].encode()
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+    raw_pubkey_b64 = base64.b64encode(
+        load_pem_public_key(pub_key).public_bytes(Encoding.Raw, PublicFormat.Raw)
+    ).decode()
+
+    tap_payload = json.dumps({
+        "agent_id":            agent_id,
+        "public_key":          raw_pubkey_b64,
+        "signature_algorithm": "ed25519",
+        "capabilities":        [{"action": "browse"}, {"action": "search"}],
+    }).encode()
+
+    c = http.client.HTTPSConnection(HOST, context=ctx)
+    c.request(
+        "POST", f"/v1/agents/register/tap?app_id={args.app_id}",
+        body=tap_payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {jwt}"},
+    )
+    tap_resp = json.loads(c.getresponse().read().decode())
+    c.close()
+
+    if not (tap_resp.get("success") or tap_resp.get("tap_enabled")):
+        print(json.dumps({
+            "success": False,
+            "error": "tap_registration_failed",
+            "raw_response": tap_resp,
         }))
         sys.exit(0)
 
