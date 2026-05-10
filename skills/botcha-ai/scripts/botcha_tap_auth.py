@@ -24,6 +24,7 @@ import http.client
 import ssl
 import base64
 import os
+import time
 
 try:
     import yaml
@@ -107,7 +108,11 @@ try:
     c.close()
 
     if access_token:
+        expires_in = token_resp.get("expires_in", 3600)
         cfg_data["apps"][APP_ID]["refresh_token"] = refresh_token
+        cfg_data["apps"][APP_ID]["access_token"]  = access_token
+        cfg_data["apps"][APP_ID]["expires_at"]    = time.time() + expires_in
+        cfg_data["apps"][APP_ID]["token_type"]    = "tap"
         CFG_FILE.write_text(yaml.dump(cfg_data, default_flow_style=False))
         print(json.dumps({
             "success":       True,

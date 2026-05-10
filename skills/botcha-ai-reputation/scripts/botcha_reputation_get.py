@@ -21,6 +21,7 @@ import http.client
 import ssl
 import base64
 import hashlib
+import time
 
 try:
     import yaml
@@ -58,6 +59,19 @@ except Exception as e:
     sys.exit(1)
 
 ctx = ssl.create_default_context()
+
+def get_cached_token():
+    token      = cfg_data["apps"][APP_ID].get("access_token")
+    expires_at = cfg_data["apps"][APP_ID].get("expires_at", 0)
+    if token and time.time() < expires_at - 60:
+        return token
+    return None
+
+def save_token(token, expires_in, token_type):
+    cfg_data["apps"][APP_ID]["access_token"] = token
+    cfg_data["apps"][APP_ID]["expires_at"]   = time.time() + expires_in
+    cfg_data["apps"][APP_ID]["token_type"]   = token_type
+    CFG_FILE.write_text(yaml.dump(cfg_data, default_flow_style=False))
 
 def tap_auth():
     c = http.client.HTTPSConnection(HOST, context=ctx)
@@ -105,9 +119,16 @@ def speed_challenge_auth():
     return token_resp.get("access_token"), token_resp
 
 try:
-    jwt, raw = tap_auth()
+    raw = {}
+    jwt = get_cached_token()
+    if not jwt:
+        jwt, raw = tap_auth()
+        if jwt:
+            save_token(jwt, raw.get("expires_in", 3600), "tap")
     if not jwt:
         jwt, raw = speed_challenge_auth()
+        if jwt:
+            save_token(jwt, raw.get("expires_in", 3600), "challenge")
     if not jwt:
         print(json.dumps({"success": False, "error": "auth_failed", "raw_response": raw}))
         sys.exit(0)
