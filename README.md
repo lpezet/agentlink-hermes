@@ -62,10 +62,10 @@ challenge-solving fallback for unauthenticated contexts.
 
 **Inputs:**
 
-| Parameter  | Required | Description                                                                      |
-| ---------- | -------- | -------------------------------------------------------------------------------- |
-| `app_id`   | yes      | Your Botcha.ai application ID                                                    |
-| `audience` | no       | Resource server URL — scopes the token                                           |
+| Parameter  | Required | Description                                                                                                                           |
+| ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `app_id`   | yes      | Your Botcha.ai application ID                                                                                                         |
+| `audience` | no       | Resource server URL — scopes the token                                                                                                |
 | `force`    | no       | Pass `"force"` to clear all cached tokens and force a full re-authentication cycle, earning a fresh verification event for reputation |
 
 **Output:** JSON block with `access_token`, `refresh_token`, `auth_method`,
@@ -107,12 +107,20 @@ earn reputation across partner networks.
 
 **Inputs:**
 
-| Parameter   | Required | Description                                                              |
-| ----------- | -------- | ------------------------------------------------------------------------ |
-| `app_id`    | yes      | Your Botcha.ai application ID                                            |
-| `operation` | yes      | `get` — current score and tier · `list` — event history                  |
+| Parameter   | Required | Description                                                                                           |
+| ----------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `app_id`    | yes      | Your Botcha.ai application ID                                                                         |
+| `operation` | yes      | `get` — current score and tier · `list` — event history                                               |
 | `category`  | no       | Filter for `list`: `verification`, `attestation`, `delegation`, `session`, `violation`, `endorsement` |
-| `limit`     | no       | Max events to return (for `list`)                                        |
+| `limit`     | no       | Max events to return (for `list`)                                                                     |
 
 **Output:** JSON block with `score`, `tier`, and `events` (for `get`), or an array of
 event objects (for `list`).
+
+# Testing skills
+
+## Claude
+
+```bash
+claude --plugin-dir .
+```
