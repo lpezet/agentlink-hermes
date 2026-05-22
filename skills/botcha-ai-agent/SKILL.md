@@ -22,7 +22,9 @@ context: fork
 allowed-tools: Bash(python3 *)
 arguments:
   - app_id
-argument-hint: "[<app_id>]"
+  - agent_name
+  - operator
+argument-hint: "[--app-id <app_id>] [--agent-name <name>] [--operator <org>]"
 version: 1.0.0
 author: lpezet@gmail.com
 metadata:
@@ -76,18 +78,17 @@ Always include the resolved `app_id` in the output block, regardless of whether 
 
 ## Step 1: Run registration script
 
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_register.py $app_id
-```
-
-**If the output contains `"missing": [...]`:** ask the user for each listed
-value. When asking for `agent_name`, propose your own current agent name as the
-default. When asking for `operator`, propose the user's name or organisation if
-you know it from context. Then re-run with the supplied values:
+Build the command, appending flags only for values that were supplied:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_register.py $app_id --agent-name "NAME" --operator "ORG"
+python3 ${CLAUDE_SKILL_DIR}/scripts/botcha_register.py $app_id \
+  [--agent-name "$agent_name" if $agent_name was provided] \
+  [--operator "$operator" if $operator was provided]
 ```
+
+**If the output contains `"missing": [...]`:** emit the failure block below and
+stop. The caller must re-invoke this skill with the missing values supplied as
+`--agent-name` / `--operator` flags.
 
 **If `"success": true, "registered": true`** → a new registration was performed. Record `agent_id`.
 
@@ -117,6 +118,9 @@ On failure:
 {
   "success": false,
   "error": "<error message>",
+  "missing": ["<field>", "..."],
   "strategy_notes": "<what failed and at which step>"
 }
 ```
+
+Omit `"missing"` when it is empty.
